@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bike Menu｜Google 試算表與表單入口</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="一頁式選單，點選即可開啟 Google 試算表 / Google 表單，或直接在頁面內嵌預覽。" />
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <header class="max-w-5xl mx-auto px-4 pt-10 pb-6">
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight">Bike Menu</h1>
+        <p class="mt-1 text-slate-600">內嵌預覽 + 快速連結（點卡片按鈕會在新分頁開啟）</p>
+      </div>
+      <div class="relative">
+        <input id="search" type="search" placeholder="搜尋名稱 / 關鍵字…" class="w-72 sm:w-80 rounded-2xl border border-slate-300 bg-white px-4 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 pb-16">
+    <!-- 內嵌區塊（會依資料自動渲染） -->
+    <section id="embeds" class="space-y-6 mb-10"></section>
+
+    <!-- 卡片列表（連結類） -->
+    <div id="cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <div id="empty" class="hidden text-center text-slate-500 mt-10">找不到符合條件的項目</div>
+
+    <hr class="my-12" />
+    <section class="prose max-w-none prose-slate">
+      <h2>說明｜Google 表單如何取得「內嵌」程式碼？</h2>
+      <ol>
+        <li>打開你的 Google 表單 → 右上角點「<strong>傳送</strong>」(紙飛機圖示)。</li>
+        <li>切換到「<strong>&lt;&gt; 內嵌</strong>」分頁，複製裡面的 <code>&lt;iframe ...&gt;&lt;/iframe&gt;</code> 程式碼。</li>
+        <li>（若有組織網域限制）到「設定 → 回覆 → 受試者」確認是否勾選「限制為組織內使用者」。如需外部填寫請取消限制。</li>
+        <li>把 iframe 中的 <code>src="..."</code> 貼給我，我可以幫你改成 RWD 容器並加入到此頁的內嵌區塊。</li>
+      </ol>
+
+      <details>
+        <summary>（可選）Google 試算表內嵌指定分頁</summary>
+        <p>使用「檔案 → 發佈到網路上 → 內嵌」得到的連結時，若要指定分頁，請在 <code>pubhtml</code> 後加上 <code>?gid=分頁代碼</code>，例如：
+        <code>.../pubhtml?gid=123456789&amp;widget=true&amp;headers=false</code>。</p>
+      </details>
+    </section>
+  </main>
+
+  <footer class="border-t bg-white/60">
+    <div class="max-w-5xl mx-auto px-4 py-6 text-sm text-slate-500 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+      <p>© <span id="year"></span> Bike Menu. 靜態網站（GitHub Pages 可用）。</p>
+      <p>維護方式：在下方 SHEETS 陣列更新資料即可。</p>
+    </div>
+  </footer>
+
+  <script>
+    // ======= 1) 在這裡維護你的清單 =======
+    // type: 'embed' 代表直接在頁面顯示 iframe；'link' 代表顯示卡片按鈕、點擊後開新分頁。
+    // 若為 Google 試算表的內嵌，建議使用發佈到網路上的 pubhtml 連結，必要時加上 ?gid= 指定分頁。
+    const SHEETS = [
+      {
+        type: 'embed',
+        name: '班表查詢',
+        desc: '排班資訊內嵌預覽（發佈到網路上）',
+        iframeSrc: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTs1kVp_QwJUNKIzXkRO5RPDrYoIxyHAwM2KyO1wn3NZ3cCtsj33sz2uP8Ahh8Nd3SdxULrJFEXn9a3/pubhtml?widget=true&headers=false',
+        tags: ['排班','內嵌']
+      },
+      {
+        type: 'link',
+        name: '調度車使用登記表',
+        desc: 'Google 表單（新分頁開啟）',
+        url: 'https://docs.google.com/forms/d/e/1FAIpQLScosdQ3pr_Xxpd8L0eDOcrdUs21y-f-7m9K24FYL52jAUuX-A/viewform',
+        tags: ['表單','調度']
+      },
+      {
+        type: 'link',
+        name: '場站換電、清潔、維修通報紀錄單',
+        desc: 'Google 表單（新分頁開啟）',
+        url: 'https://docs.google.com/forms/d/e/1FAIpQLSf7QH4GoNoYDiIgPzxRByRqNvat1879954N24GFpgArT_vTgg/viewform',
+        tags: ['表單','維修','清潔']
+      }
+    ];
+
+    // ======= 2) 渲染：內嵌 + 連結卡片 =======
+    const searchEl = document.getElementById('search');
+    const embedsEl = document.getElementById('embeds');
+    const cardsEl = document.getElementById('cards');
+    const emptyEl = document.getElementById('empty');
+
+    function render() {
+      const q = (searchEl.value || '').trim().toLowerCase();
+      const filtered = SHEETS.filter(s => {
+        const hit = `${s.name} ${s.desc || ''} ${(s.tags || []).join(' ')}`.toLowerCase();
+        return !q || hit.includes(q);
+      });
+
+      embedsEl.innerHTML = '';
+      cardsEl.innerHTML = '';
+
+      const embeds = filtered.filter(s => s.type === 'embed');
+      const links  = filtered.filter(s => s.type === 'link');
+
+      // 內嵌區
+      for (const s of embeds) {
+        const wrap = document.createElement('section');
+        wrap.className = 'rounded-2xl border bg-white shadow-sm overflow-hidden';
+        wrap.innerHTML = `
+          <div class="p-4 border-b">
+            <h2 class="text-lg font-semibold">${s.name}</h2>
+            <p class="mt-1 text-sm text-slate-600">${s.desc || ''}</p>
+          </div>
+          <div class="p-4">
+            <div class="aspect-[16/10] w-full overflow-hidden rounded-xl border">
+              <iframe src="${s.iframeSrc}"
+                class="w-full h-full" loading="lazy" referrerpolicy="no-referrer"></iframe>
+            </div>
+          </div>`;
+        embedsEl.appendChild(wrap);
+      }
+
+      // 連結卡片
+      for (const s of links) {
+        const card = document.createElement('article');
+        card.className = 'rounded-2xl border bg-white shadow-sm hover:shadow-md transition-shadow';
+        card.innerHTML = `
+          <div class="p-4">
+            <h3 class="text-lg font-semibold leading-tight">${s.name}</h3>
+            <p class="mt-1 text-sm text-slate-600">${s.desc || ''}</p>
+            ${s.tags && s.tags.length ? `<div class="mt-3 flex flex-wrap gap-2">${s.tags.map(t => `<span class=\"px-2 py-0.5 text-xs rounded-full bg-slate-100 border\">${t}</span>`).join('')}</div>` : ''}
+          </div>
+          <div class="px-4 pb-4">
+            <a href="${s.url}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-xl border bg-slate-900 text-white px-4 py-2 text-sm hover:bg-black">
+              開啟連結
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path d="M13.5 3a.75.75 0 0 0 0 1.5h5.19l-8.72 8.72a.75.75 0 1 0 1.06 1.06l8.72-8.72V10.5a.75.75 0 0 0 1.5 0V3.75A.75.75 0 0 0 20.25 3h-6.75Z"/><path d="M5.25 5.25A2.25 2.25 0 0 0 3 7.5v11.25A2.25 2.25 0 0 0 5.25 21h11.25A2.25 2.25 0 0 0 18.75 18.75V12a.75.75 0 0 0-1.5 0v6.75a.75.75 0 0 1-.75.75H5.25a.75.75 0 0 1-.75-.75V7.5a.75.75 0 0 1 .75-.75H12a.75.75 0 0 0 0-1.5H5.25Z"/></svg>
+            </a>
+          </div>`;
+        cardsEl.appendChild(card);
+      }
+
+      // 空狀態
+      if (filtered.length === 0) {
+        emptyEl.classList.remove('hidden');
+      } else {
+        emptyEl.classList.add('hidden');
+      }
+    }
+
+    searchEl.addEventListener('input', render);
+    render();
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bike Menu｜Google 試算表與表單入口</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="一頁式選單，點選即可開啟 Google 試算表 / Google 表單，或直接在頁面內嵌預覽。" />
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <header class="max-w-5xl mx-auto px-4 pt-10 pb-6">
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight">Bike Menu</h1>
+        <p class="mt-1 text-slate-600">內嵌預覽 + 快速連結（點卡片按鈕會在新分頁開啟）</p>
+      </div>
+      <div class="relative">
+        <input id="search" type="search" placeholder="搜尋名稱 / 關鍵字…" class="w-72 sm:w-80 rounded-2xl border border-slate-300 bg-white px-4 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 pb-16">
+    <!-- 內嵌區塊（會依資料自動渲染） -->
+    <section id="embeds" class="space-y-6 mb-10"></section>
+
+    <!-- 卡片列表（連結類） -->
+    <div id="cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <div id="empty" class="hidden text-center text-slate-500 mt-10">找不到符合條件的項目</div>
+
+    <hr class="my-12" />
+    <section class="prose max-w-none prose-slate">
+      <h2>說明｜Google 表單如何取得「內嵌」程式碼？</h2>
+      <ol>
+        <li>打開你的 Google 表單 → 右上角點「<strong>傳送</strong>」(紙飛機圖示)。</li>
+        <li>切換到「<strong>&lt;&gt; 內嵌</strong>」分頁，複製裡面的 <code>&lt;iframe ...&gt;&lt;/iframe&gt;</code> 程式碼。</li>
+        <li>（若有組織網域限制）到「設定 → 回覆 → 受試者」確認是否勾選「限制為組織內使用者」。如需外部填寫請取消限制。</li>
+        <li>把 iframe 中的 <code>src="..."</code> 貼給我，我可以幫你改成 RWD 容器並加入到此頁的內嵌區塊。</li>
+      </ol>
+
+      <details>
+        <summary>（可選）Google 試算表內嵌指定分頁</summary>
+        <p>使用「檔案 → 發佈到網路上 → 內嵌」得到的連結時，若要指定分頁，請在 <code>pubhtml</code> 後加上 <code>?gid=分頁代碼</code>，例如：
+        <code>.../pubhtml?gid=123456789&amp;widget=true&amp;headers=false</code>。</p>
+      </details>
+    </section>
+  </main>
+
+  <footer class="border-t bg-white/60">
+    <div class="max-w-5xl mx-auto px-4 py-6 text-sm text-slate-500 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+      <p>© <span id="year"></span> Bike Menu. 靜態網站（GitHub Pages 可用）。</p>
+      <p>維護方式：在下方 SHEETS 陣列更新資料即可。</p>
+    </div>
+  </footer>
+
+  <script>
+    // ======= 1) 在這裡維護你的清單 =======
+    // type: 'embed' 代表直接在頁面顯示 iframe；'link' 代表顯示卡片按鈕、點擊後開新分頁。
+    // 若為 Google 試算表的內嵌，建議使用發佈到網路上的 pubhtml 連結，必要時加上 ?gid= 指定分頁。
+    const SHEETS = [
+      {
+        type: 'embed',
+        name: '班表查詢',
+        desc: '排班資訊內嵌預覽（發佈到網路上）',
+        iframeSrc: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTs1kVp_QwJUNKIzXkRO5RPDrYoIxyHAwM2KyO1wn3NZ3cCtsj33sz2uP8Ahh8Nd3SdxULrJFEXn9a3/pubhtml?widget=true&headers=false',
+        tags: ['排班','內嵌']
+      },
+      {
+        type: 'link',
+        name: '調度車使用登記表',
+        desc: 'Google 表單（新分頁開啟）',
+        url: 'https://docs.google.com/forms/d/e/1FAIpQLScosdQ3pr_Xxpd8L0eDOcrdUs21y-f-7m9K24FYL52jAUuX-A/viewform',
+        tags: ['表單','調度']
+      },
+      {
+        type: 'link',
+        name: '場站換電、清潔、維修通報紀錄單',
+        desc: 'Google 表單（新分頁開啟）',
+        url: 'https://docs.google.com/forms/d/e/1FAIpQLSf7QH4GoNoYDiIgPzxRByRqNvat1879954N24GFpgArT_vTgg/viewform',
+        tags: ['表單','維修','清潔']
+      }
+    ];
+
+    // ======= 2) 渲染：內嵌 + 連結卡片 =======
+    const searchEl = document.getElementById('search');
+    const embedsEl = document.getElementById('embeds');
+    const cardsEl = document.getElementById('cards');
+    const emptyEl = document.getElementById('empty');
+
+    function render() {
+      const q = (searchEl.value || '').trim().toLowerCase();
+      const filtered = SHEETS.filter(s => {
+        const hit = `${s.name} ${s.desc || ''} ${(s.tags || []).join(' ')}`.toLowerCase();
+        return !q || hit.includes(q);
+      });
+
+      embedsEl.innerHTML = '';
+      cardsEl.innerHTML = '';
+
+      const embeds = filtered.filter(s => s.type === 'embed');
+      const links  = filtered.filter(s => s.type === 'link');
+
+      // 內嵌區
+      for (const s of embeds) {
+        const wrap = document.createElement('section');
+        wrap.className = 'rounded-2xl border bg-white shadow-sm overflow-hidden';
+        wrap.innerHTML = `
+          <div class="p-4 border-b">
+            <h2 class="text-lg font-semibold">${s.name}</h2>
+            <p class="mt-1 text-sm text-slate-600">${s.desc || ''}</p>
+          </div>
+          <div class="p-4">
+            <div class="aspect-[16/10] w-full overflow-hidden rounded-xl border">
+              <iframe src="${s.iframeSrc}"
+                class="w-full h-full" loading="lazy" referrerpolicy="no-referrer"></iframe>
+            </div>
+          </div>`;
+        embedsEl.appendChild(wrap);
+      }
+
+      // 連結卡片
+      for (const s of links) {
+        const card = document.createElement('article');
+        card.className = 'rounded-2xl border bg-white shadow-sm hover:shadow-md transition-shadow';
+        card.innerHTML = `
+          <div class="p-4">
+            <h3 class="text-lg font-semibold leading-tight">${s.name}</h3>
+            <p class="mt-1 text-sm text-slate-600">${s.desc || ''}</p>
+            ${s.tags && s.tags.length ? `<div class="mt-3 flex flex-wrap gap-2">${s.tags.map(t => `<span class=\"px-2 py-0.5 text-xs rounded-full bg-slate-100 border\">${t}</span>`).join('')}</div>` : ''}
+          </div>
+          <div class="px-4 pb-4">
+            <a href="${s.url}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-xl border bg-slate-900 text-white px-4 py-2 text-sm hover:bg-black">
+              開啟連結
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path d="M13.5 3a.75.75 0 0 0 0 1.5h5.19l-8.72 8.72a.75.75 0 1 0 1.06 1.06l8.72-8.72V10.5a.75.75 0 0 0 1.5 0V3.75A.75.75 0 0 0 20.25 3h-6.75Z"/><path d="M5.25 5.25A2.25 2.25 0 0 0 3 7.5v11.25A2.25 2.25 0 0 0 5.25 21h11.25A2.25 2.25 0 0 0 18.75 18.75V12a.75.75 0 0 0-1.5 0v6.75a.75.75 0 0 1-.75.75H5.25a.75.75 0 0 1-.75-.75V7.5a.75.75 0 0 1 .75-.75H12a.75.75 0 0 0 0-1.5H5.25Z"/></svg>
+            </a>
+          </div>`;
+        cardsEl.appendChild(card);
+      }
+
+      // 空狀態
+      if (filtered.length === 0) {
+        emptyEl.classList.remove('hidden');
+      } else {
+        emptyEl.classList.add('hidden');
+      }
+    }
+
+    searchEl.addEventListener('input', render);
+    render();
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
